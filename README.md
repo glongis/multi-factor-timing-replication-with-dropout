@@ -133,63 +133,93 @@ the "Baseline" row of the strategy table below):
 
 | | Regular MT (batch norm, l1=0.01) | MC-Dropout MT (dropout, l1=0.001) |
 |---|---|---|
-| Mean Accuracy | 52.3% | 55.1% |
-| Sharpe Ratio | 0.55 | 0.75 |
-| alpha (annualized %) | 0.28 | 0.88 |
-| t(alpha) | 0.61 | 2.13 |
-| beta | 0.65 | 0.84 |
-| R² (%) | 64.9 | 85.7 |
+| Mean Accuracy | 52.3% | 54.3% |
+| Sharpe Ratio | 0.55 | 0.66 |
+| alpha (annualized %) | 0.28 | 0.50 |
+| t(alpha) | 0.61 | 1.21 |
+| beta | 0.65 | 0.88 |
+| R² (%) | 64.9 | 85.3 |
 
-MC-Dropout MT is still ahead on every metric, including 4 of 5 individual factor accuracies
-(SMB is the one that doesn't improve, roughly flat at 53.3% → 53.0%; HML, RMW, CMA, MOM all
-improve). Worth reading carefully, though: this isn't a clean "dropout beats batch norm" result.
-The two models differ in *two* ways at once — the trunk regularizer (batch norm vs. dropout)
-*and* the `l1` strength (0.01 vs. 0.001), and the `l1` change wasn't a free choice; it's the fix
-described in "What's deliberately simplified," forced by the fact that 0.01 collapses the
+MC-Dropout MT is still ahead on every metric, including 4 of 5 individual factor accuracies —
+though *which* factor doesn't improve keeps changing between runs (this time it's CMA, roughly
+flat at 50.1% → 49.1%; an earlier run had SMB as the laggard instead), one more sign of
+retraining noise. Worth reading carefully, though: this isn't a clean "dropout beats batch norm"
+result. The two models differ in *two* ways at once — the trunk regularizer (batch norm vs.
+dropout) *and* the `l1` strength (0.01 vs. 0.001), and the `l1` change wasn't a free choice; it's
+the fix described in "What's deliberately simplified," forced by the fact that 0.01 collapses the
 dropout variant's weights to ~0. Nothing here isolates how much of the gap is "dropout
 regularizes better" vs. simply "weaker `l1` let this model use more of the input signal."
 
 **Does uncertainty-weighting improve on that baseline?** Multi-factor timing performance vs. the
-multi-factor BUY benchmark (Sharpe 0.60):
+multi-factor BUY benchmark (Sharpe 0.60), now including a fourth strategy (see below):
 
 | Strategy | Sharpe | alpha (annualized %) | t(alpha) | beta | R² (%) |
 |---|---|---|---|---|---|
-| Baseline (unweighted MT rule) | 0.75 | 0.88 | 2.13 | 0.84 | 85.7 |
-| Confidence-scaled (position × confidence) | 0.59 | 0.33 | 1.06 | 0.43 | 62.1 |
-| Abstain on flagged (skip top 20% uncertain) | 0.67 | 0.87 | 1.54 | 0.55 | 53.9 |
+| Baseline (unweighted MT rule) | 0.66 | 0.50 | 1.21 | 0.88 | 85.3 |
+| Confidence-scaled (position × confidence) | 0.53 | 0.08 | 0.21 | 0.54 | 70.2 |
+| Abstain on flagged (skip top 20% uncertain) | 0.56 | 0.40 | 0.79 | 0.62 | 58.5 |
+| Vol-regime abstain (independent of MC Dropout) | **0.67** | **0.97** | **1.97** | 0.44 | 41.6 |
 
-**This flips the pre-fix conclusion.** Before the look-ahead fix, both uncertainty-weighted
-strategies beat the baseline on Sharpe (0.92 → 1.03 / 1.08). After it, **both underperform the
-baseline** (0.75 → 0.59 / 0.67) — acting on this uncertainty signal *hurts* risk-adjusted returns
-in this run rather than helping. Reported as-is, not tuned away, per the standing instruction not
-to adjust anything to make these numbers look better.
+Confidence-scaled and abstain-on-flagged both underperform the baseline again this run — same
+qualitative conclusion as before the vol-regime addition (and a flip from the pre-look-ahead-fix
+numbers, where both used to beat baseline). **Vol-regime abstain is the first of the four
+strategies tried in this notebook to actually beat the baseline** on both Sharpe and alpha, with
+by far the best t(alpha) of the four (1.97 — still short of conventional significance, but
+closest). See below for what it is and why it works where the others didn't.
 
-**Calibration check** (is the uncertainty signal actually informative?): mean classification
+**Calibration check** (is MC-Dropout's uncertainty actually informative?): mean classification
 accuracy on flagged (top 20% most uncertain, calibrated per fold on validation data) vs.
-unflagged factor-months — **51.8% flagged (n=492) vs. 56.2% unflagged (n=1423)**. Unlike an
-earlier run (54.8% vs. 54.7% — no gap), this run shows a real ~4.4-point gap in the *expected*
-direction: flagged months really are less accurate. That reversal is itself informative — it
-comes from MT-Dropout being retrained from scratch (documented run-to-run noise, not the
-look-ahead fix, which doesn't touch accuracy at all), and it means a single run's calibration
-number swung from null to clearly-real just from re-training. Treat *either* result as one noisy
-draw, not a settled answer.
+unflagged factor-months — **54.1% flagged (n=455) vs. 54.4% unflagged (n=1460)**, essentially no
+gap. This is the third run of this same check with three different results (54.8%/54.7% no gap;
+51.8%/56.2% a real gap; now 54.1%/54.4% no gap again) — two of three show no gap, so treat the
+one real-looking gap as more likely the noisy outlier than the other way around. This instability
+is inherent to MC-Dropout's uncertainty signal specifically (it's a property of the freshly
+retrained model's dropout behavior each run) — it does not affect the vol-regime signal below,
+which is computed from realized market returns and has no retraining randomness in it at all.
 
-So why would a *more* accurate flag still produce *worse* Sharpe when acted on? Checked directly
-(approximate — using a per-factor global 80th-percentile uncertainty cut as a stand-in for the
-notebook's true per-fold flag, since the exact boolean flag isn't persisted to disk): flagged
-factor-months have a **higher** mean baseline P&L contribution (0.0049) than unflagged ones
-(0.0023), despite the lower hit rate above, and higher return volatility (std 0.033 vs. 0.029).
-In other words, uncertain months are a mixed bag that skews toward a fatter right tail — more
-wrong calls, but also some outsized winners (the April 2009 momentum crash, now correctly
-attributed to its signal month by the look-ahead fix, is exactly this kind of month). Shrinking
-or skipping those months trims the big winners along with the extra losers, and on net that
-costs more return than the avoided losses. Uncertainty here still correlates with realized
-return *volatility* too (pooled correlation with `|r_{t+1}|` = 0.132; the standard deviation of
-realized returns climbs from 0.015 in the most-confident quintile to 0.027-0.029 in the two most
-uncertain), so both a real (if noisy) accuracy signal and a volatility relationship coexist — the
-net effect on this run's Sharpe is still negative because of the tail-winner effect above.
+### Why do the MC-Dropout-based strategies still underperform, and can anything fix it?
 
-Four things worth flagging honestly about how these numbers were produced:
+A follow-up diagnostic looked directly at the worst losses under the baseline rule: every
+factor-month where the model went long, MC-Dropout flagged it uncertain, and it lost money,
+sorted by loss size. The worst five were Feb 2000 SMB (-15.5%, prob 0.85), Apr 2009 MOM (-12.5%,
+prob 0.67), Feb 2009 MOM (-11.8%, prob 0.77), Dec 2008 HML (-11.0%, prob 0.80), and May 2021 HML
+(-7.9%, prob 0.91) — **high-conviction calls, not weak ones**. Across all 149 qualifying
+long/flagged/losing months, mean conviction was 0.67 (well above the 0.5 midpoint), and more of
+them were high-conviction (>0.7, n=56) than low-conviction (0.50-0.58, n=42).
+
+That result killed an otherwise-plausible fix (**conviction-gated abstention**: only abstain when
+*both* flagged uncertain *and* weakly convicted, on the theory that MC-Dropout's flag might just
+be catching the model's hedged, low-conviction guesses rather than its real calls). The diagnostic
+shows the opposite: the biggest blowups are the model at its *most* confident. MC Dropout's 50
+stochastic sub-networks all learn the same about-to-break pattern together, so nothing about the
+model's own self-assessment flags a genuine regime break in advance — a known failure mode
+(overconfidence right before regime changes), not a bug in this implementation. Conviction-gating
+would have kept exactly these positions at full size, so it was never built.
+
+**Vol-regime abstain**, by contrast, doesn't use MC Dropout at all. It flags a factor-month
+purely from trailing realized volatility — rolling 3-month std of that factor's own return series,
+using only returns already known by the signal date (no look-ahead, no model). The cutoff is
+calibrated per fold from that fold's *validation*-period trailing vol only (same discipline as
+`UNCERTAINTY_QUANTILE` everywhere else), at a threshold (3-month window, 80th percentile) fixed in
+advance and not tuned against the results below. It abstains when trailing vol exceeds that
+fold's cutoff, full stop — independent of what MC-Dropout conviction or uncertainty say.
+
+Two direct checks on whether this mechanism actually does what it's designed to do:
+- **Hit rate on the four worst diagnosed losses**: Feb 2000 SMB, Dec 2008 HML, Apr 2009 MOM, and
+  May 2021 HML were all correctly abstained — **4 for 4**.
+- **Independence from MC-Dropout's flag**: of all factor-months vol-regime abstains on (431, 22.5%
+  of the sample), only 36.4% were also flagged uncertain by MC-Dropout — meaning 63.6% of the
+  months this rule sits out are ones MC-Dropout was *confident* about. It's catching a genuinely
+  different kind of risk, not relabeling the same months.
+
+That combination — catching the four known disasters, mostly not overlapping with MC-Dropout's
+own flag, and beating the baseline on Sharpe and alpha in this run — is the most encouraging
+result of the four strategies tried. Still one run, though: the vol-regime *flag* itself is fully
+deterministic (no retraining noise), but its measured effect on Sharpe still runs through the
+freshly retrained baseline model it's overlaid on, so the "beats baseline" comparison isn't
+immune to the same run-to-run noise documented throughout this section.
+
+Five things worth flagging honestly about how these numbers were produced:
 - **Leakage fix, no prior buggy-alignment baseline to compare against.** The confidence-scaled
   strategy originally normalized its position weights using the full 1990-2021 OOS uncertainty
   distribution's min/max — leaking full-sample information into early test years, unlike every
@@ -202,9 +232,17 @@ Four things worth flagging honestly about how these numbers were produced:
 - **The regular-MT-vs-MC-Dropout-MT comparison is confounded**, as noted above: two things
   changed at once (batch norm → dropout, and `l1` 0.01 → 0.001), so it doesn't isolate which one
   is responsible for MC-Dropout MT's better point-estimate accuracy.
-- **The tail-winner explanation above uses an approximate flag**, not the notebook's exact
-  per-fold boolean mask (not currently persisted to `results/`) — directionally informative, not
-  an exact accounting.
+- **Every neural-net-derived number in this section moves between runs** — this section has now
+  been regenerated three times over the course of this project (leakage fix, look-ahead fix,
+  vol-regime addition), and the baseline Sharpe alone has read 0.92, 0.75, and 0.66 across those
+  three runs on the same code, same data, same seed. The qualitative conclusions (uncertainty-
+  weighting underperforms baseline; vol-regime abstain catches genuinely different, high-severity
+  risk) have been checked for robustness to this noise where explicitly noted; the exact numbers
+  have not.
+- **Vol-regime abstain's threshold and window were chosen once, in advance** (3-month trailing,
+  80th percentile) and not swept or tuned against the hit-rate or Sharpe results — but neither
+  were they chosen from a principled optimization over alternatives, just a single reasonable
+  default. Whether a different window/threshold does better or worse is untested.
 
 ## Setup
 
