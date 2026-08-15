@@ -1,0 +1,22 @@
+# Core numerical / data stack
+numpy==2.5.2
+pandas==2.2.3
+pyarrow==25.0.1
+statsmodels==0.14.6
+scikit-learn==1.9.0
+xgboost==3.4.0
+
+# Deep learning (MT model, LSTM benchmark)
+tensorflow==2.21.0
+keras==3.15.1
+
+# Data sources (Kenneth French / FRED-MD / Chen-Zimmermann open asset pricing)
+pandas-datareader==0.11.1
+openassetpricing==0.0.2
+
+# Notebooks
+notebook==7.6.2
+ipykernel==7.3.0
+nbformat==5.11.0
+nbclient==0.11.0
+nbconvert==7.17.1

@@ -1,0 +1,21 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Cached data pulls (regenerated automatically on first import of src/loading.py —
+# see README for details; Ken French / FRED-MD / OpenAP downloads are slow and OpenAP's
+# is subject to a shared quota, so this cache is deliberately not committed)
+data/*.parquet
+
+# OS cruft
+.DS_Store
+
+# Claude Code local session state
+.claude/
