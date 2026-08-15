@@ -55,38 +55,77 @@ Each notebook documents its own specific simplifications inline, next to the rel
 
 ## Results (this repo vs. the paper), out-of-sample Jan 1990 – Dec 2021
 
+**One-month look-ahead bug in the trading evaluation, found and fixed.** Every model here is
+trained to predict `sign(r_{t+1})` from month-t predictors (`response.shift(-1)` in
+`build_labels_and_panel`, matching paper Sec 3.1) — but `strategy_returns()` was grading each
+signal against the return already realized *at* t, not the return it actually forecast at t+1.
+That's a real look-ahead problem, not a cosmetic one: several of the 137 financial predictors
+are month-t close cousins of the response factors themselves (e.g. HML ~ book-to-market, MOM ~
+momentum anomalies), so grading a signal on r_t was partly grading the model on numbers already
+sitting in its own input vector. Caught via a concrete anomaly: the April 2009 momentum crash
+(`MOM = -0.3436`) was landing on the pre-fix `mt_strategy_returns.csv`'s 2009-04-30 row — the
+same row as the raw return — instead of 2009-03-31, the signal date that should have been graded
+against it. Fixed in `src/estimation.py` (`strategy_returns()`, `benchmark_summary()`) and
+mirrored in both notebooks' inline copies (`Initial MT.ipynb`, `MC Dropout Extension.ipynb`);
+`tests/test_estimation.py` regression-tests it with that same April 2009 fixture and fails on
+the old behavior. **Classification accuracy is unaffected** — it was always computed from labels,
+never from these returns — but **every Sharpe, alpha, t-stat, beta, and R² number in this README
+changed.**
+
+Before vs. after (Sharpe / t(alpha)):
+
+| Model | Sharpe (before) | Sharpe (after) | t(alpha) (before) | t(alpha) (after) |
+|---|---|---|---|---|
+| LR | 1.11 | 0.64 | 4.74 | 1.53 |
+| RF | 1.33 | 0.84 | 10.81 | 3.64 |
+| XGBoost (GBT) | 1.17 | 0.79 | 4.60 | 2.69 |
+| MT | 0.80 | 0.55 | 3.35 | 0.61 |
+| MC-Dropout baseline | 0.92 | 0.75 | 4.30 | 2.13 |
+| MC-Dropout confidence-scaled | 1.03 | 0.59 | 5.18 | 1.06 |
+| MC-Dropout abstain | 1.08 | 0.67 | 4.36 | 1.54 |
+
+Sharpes now sit in the 0.5-0.8 range and t-stats in the 0.6-3.6 range — in line with the paper's
+own best-of-eleven-models result (Sharpe 0.82, t(alpha) 3.05) rather than beating it by 30-60%
+the way the pre-fix numbers did. That gap should have been the first tell something was wrong.
+
+*Accuracy sanity check, run explicitly because a genuine fix here should not move accuracy at
+all:* LR and XGBoost's OOS predictions are bit-identical before vs. after (both fully
+deterministic given a fixed `random_state`); RF's differ by ≤2e-16 (float rounding from
+parallel-tree aggregation, not the fix). MT and MC-Dropout MT's predictions *do* differ
+before/after, but only because both are neural nets retrained from scratch on every notebook
+run, and this project's own single-seed simplification already documents run-to-run training
+noise below — that noise, not the fix, is why MT's accuracy reads 52.3% here vs. 53.1% in an
+earlier run (both within the previously observed 52-55% band).
+
 Mean out-of-sample classification accuracy across the five factors (paper Table 1) and
-multi-factor timing Sharpe ratio (paper Table 3):
+multi-factor timing Sharpe ratio (paper Table 3), post-fix:
 
 | Model | Accuracy (this repo) | Accuracy (paper) | Sharpe (this repo) | Sharpe (paper) |
 |---|---|---|---|---|
-| BUY (always long) | 53.5% | 53.5% | 0.59 | 0.60 |
-| LR | 51.1% | 53.1% | 1.11 | 0.61 |
-| RF | 56.3% | 55.6% | 1.33 | 0.66 |
-| XGBoost (≈ GBT) | 54.6% | 54.8% | 1.17 | 0.61 |
-| **MT** | **53.1%** | 55.4% | **0.80** | 0.69 |
+| BUY (always long) | 53.5% | 53.5% | 0.60 | 0.60 |
+| LR | 51.1% | 53.1% | 0.64 | 0.61 |
+| RF | 56.3% | 55.6% | 0.84 | 0.66 |
+| XGBoost (≈ GBT) | 54.6% | 54.8% | 0.79 | 0.61 |
+| **MT** | **52.3%** | 55.4% | **0.55** | 0.69 |
 
 *(LSTM dropped from the comparison — see "What's deliberately simplified" above.)*
 
-Given the single-seed/no-grid-search simplification above, MT landing a few points under the
-paper's published, fully-tuned-and-ensembled accuracy number is expected rather than a bug — the
-walk-forward procedure, data construction, and architecture otherwise match the paper. The
-repo's Sharpe ratios for LR/RF/XGBoost running noticeably *above* the paper's, on the other hand,
-isn't something this pass investigated further — worth a look before leaning on those numbers.
-Because each neural net here uses one random seed instead of the paper's 10-seed ensemble, and
-TensorFlow training isn't perfectly deterministic even with a fixed seed, **exact numbers will
-drift slightly between reruns** (observed mean MT accuracy has ranged 52-55% across repeated runs
-during development) — this is expected run-to-run noise from the simplification, not a bug.
-
-*Corrected the MT row above (previously 53.7% / 0.60) to match `Initial MT.ipynb`'s actual
-last-run output (53.1% / 0.80) — the old 0.60 lines up with the BUY benchmark's Sharpe, not MT's
-own, so it looks like a copy/paste slip rather than a real result; this pass didn't retrain MT,
-just corrected the transcription.*
+Given the single-seed/no-grid-search simplification above, MT landing under the paper's
+published, fully-tuned-and-ensembled numbers on both accuracy and Sharpe is expected rather than
+a bug — the walk-forward procedure, data construction, and architecture otherwise match the
+paper. Because each neural net here uses one random seed instead of the paper's 10-seed
+ensemble, and TensorFlow training isn't perfectly deterministic even with a fixed seed, **exact
+numbers will drift slightly between reruns** (observed mean MT accuracy has ranged 52-55% across
+repeated runs during development) — this is expected run-to-run noise from the simplification,
+not a bug.
 
 ## MC Dropout extension results, out-of-sample 1990-2021
 
 `notebooks/MC Dropout Extension.ipynb` adds Monte Carlo Dropout uncertainty to MT and tests
 three ways of trading on it — full writeup of the method is in the notebook's own intro cell.
+**All numbers below are post-look-ahead-fix** (see "Results" above); the fix applies identically
+here since this notebook's `r` and `buy_ew` are built inline rather than through
+`est.strategy_returns`/`benchmark_summary`, and both were patched to match.
 
 **Regular MT vs. MC-Dropout MT, as point-estimate classifiers** (same walk-forward folds, same
 `prob > 0.5` signal rule — this is *before* acting on uncertainty at all; "MC-Dropout MT" here is
@@ -94,69 +133,78 @@ the "Baseline" row of the strategy table below):
 
 | | Regular MT (batch norm, l1=0.01) | MC-Dropout MT (dropout, l1=0.001) |
 |---|---|---|
-| Mean Accuracy | 53.1% | 54.7% |
-| Sharpe Ratio | 0.80 | 0.92 |
-| alpha (annualized %) | 1.23 | 1.80 |
-| t(alpha) | 3.35 | 4.30 |
-| beta | 0.63 | 0.90 |
-| R² (%) | 68.1 | 87.6 |
+| Mean Accuracy | 52.3% | 55.1% |
+| Sharpe Ratio | 0.55 | 0.75 |
+| alpha (annualized %) | 0.28 | 0.88 |
+| t(alpha) | 0.61 | 2.13 |
+| beta | 0.65 | 0.84 |
+| R² (%) | 64.9 | 85.7 |
 
-MC-Dropout MT is ahead on every metric here, including 4 of 5 individual factor accuracies (only
-SMB gets worse: 58.2% → 53.5%; HML, RMW, CMA, MOM all improve). Worth reading carefully, though:
-this isn't a clean "dropout beats batch norm" result. The two models differ in *two* ways at
-once — the trunk regularizer (batch norm vs. dropout) *and* the `l1` strength (0.01 vs. 0.001),
-and the `l1` change wasn't a free choice; it's the fix described below, forced by the fact that
-0.01 collapses the dropout variant's weights to ~0. Nothing here isolates how much of the gap is
-"dropout regularizes better" vs. simply "weaker `l1` let this model use more of the input
-signal." The much higher beta (0.90 vs. 0.63) and R² (87.6% vs. 68.1%) against the passive BUY
-benchmark are also consistent with MC-Dropout MT just calling "up" somewhat more often (accuracy
-rising on MOM but falling on SMB looks like a shifted long bias, not obviously sharper
-classification across the board) rather than a general improvement.
+MC-Dropout MT is still ahead on every metric, including 4 of 5 individual factor accuracies
+(SMB is the one that doesn't improve, roughly flat at 53.3% → 53.0%; HML, RMW, CMA, MOM all
+improve). Worth reading carefully, though: this isn't a clean "dropout beats batch norm" result.
+The two models differ in *two* ways at once — the trunk regularizer (batch norm vs. dropout)
+*and* the `l1` strength (0.01 vs. 0.001), and the `l1` change wasn't a free choice; it's the fix
+described in "What's deliberately simplified," forced by the fact that 0.01 collapses the
+dropout variant's weights to ~0. Nothing here isolates how much of the gap is "dropout
+regularizes better" vs. simply "weaker `l1` let this model use more of the input signal."
 
 **Does uncertainty-weighting improve on that baseline?** Multi-factor timing performance vs. the
-multi-factor BUY benchmark (Sharpe 0.59):
+multi-factor BUY benchmark (Sharpe 0.60):
 
 | Strategy | Sharpe | alpha (annualized %) | t(alpha) | beta | R² (%) |
 |---|---|---|---|---|---|
-| Baseline (unweighted MT rule) | 0.92 | 1.80 | 4.30 | 0.90 | 87.6 |
-| Confidence-scaled (position × confidence) | 1.03 | 1.64 | 5.18 | 0.50 | 69.9 |
-| Abstain on flagged (skip top 20% uncertain) | 1.08 | 2.51 | 4.36 | 0.62 | 59.6 |
+| Baseline (unweighted MT rule) | 0.75 | 0.88 | 2.13 | 0.84 | 85.7 |
+| Confidence-scaled (position × confidence) | 0.59 | 0.33 | 1.06 | 0.43 | 62.1 |
+| Abstain on flagged (skip top 20% uncertain) | 0.67 | 0.87 | 1.54 | 0.55 | 53.9 |
 
-Both beat the baseline on Sharpe; abstain also beats it on alpha (confidence-scaled's alpha
-actually dips slightly, 1.80% → 1.64%, but with much lower beta, so it's still a real
-risk-adjusted gain). I haven't run a significance test on whether these Sharpes are
-statistically distinguishable *from each other* (only that each strategy's alpha clears zero on
-its own, per the t-stats above) — with 32 years of data and a single training seed, a
-0.11-0.16 Sharpe gap is plausible but not proven robust on one run.
+**This flips the pre-fix conclusion.** Before the look-ahead fix, both uncertainty-weighted
+strategies beat the baseline on Sharpe (0.92 → 1.03 / 1.08). After it, **both underperform the
+baseline** (0.75 → 0.59 / 0.67) — acting on this uncertainty signal *hurts* risk-adjusted returns
+in this run rather than helping. Reported as-is, not tuned away, per the standing instruction not
+to adjust anything to make these numbers look better.
 
 **Calibration check** (is the uncertainty signal actually informative?): mean classification
 accuracy on flagged (top 20% most uncertain, calibrated per fold on validation data) vs.
-unflagged factor-months — **54.8% flagged (n=420) vs. 54.7% unflagged (n=1495)**. Essentially no
-gap. Reported plainly: MC-Dropout uncertainty in this run does not detectably track which
-months the model gets wrong more often.
+unflagged factor-months — **51.8% flagged (n=492) vs. 56.2% unflagged (n=1423)**. Unlike an
+earlier run (54.8% vs. 54.7% — no gap), this run shows a real ~4.4-point gap in the *expected*
+direction: flagged months really are less accurate. That reversal is itself informative — it
+comes from MT-Dropout being retrained from scratch (documented run-to-run noise, not the
+look-ahead fix, which doesn't touch accuracy at all), and it means a single run's calibration
+number swung from null to clearly-real just from re-training. Treat *either* result as one noisy
+draw, not a settled answer.
 
-So what's driving the Sharpe gain above, if not accuracy? Checked directly: MC-Dropout
-uncertainty correlates weakly but clearly with *realized return volatility* instead (pooled
-correlation with `|realized return|` = 0.095; bucketing all factor-months into uncertainty
-quintiles, the standard deviation of realized returns climbs from 0.024 in the most-confident
-quintile to 0.041 in the second-most-uncertain and 0.036 in the most-uncertain). Confidence-
-scaling and abstaining are best read as **volatility-timing**, not smarter direction-calling —
-they cut exposure in choppier months, which mechanically raises Sharpe even with zero directional
-edge, consistent with the sharp beta/R² drop in the strategy table above.
+So why would a *more* accurate flag still produce *worse* Sharpe when acted on? Checked directly
+(approximate — using a per-factor global 80th-percentile uncertainty cut as a stand-in for the
+notebook's true per-fold flag, since the exact boolean flag isn't persisted to disk): flagged
+factor-months have a **higher** mean baseline P&L contribution (0.0049) than unflagged ones
+(0.0023), despite the lower hit rate above, and higher return volatility (std 0.033 vs. 0.029).
+In other words, uncertain months are a mixed bag that skews toward a fatter right tail — more
+wrong calls, but also some outsized winners (the April 2009 momentum crash, now correctly
+attributed to its signal month by the look-ahead fix, is exactly this kind of month). Shrinking
+or skipping those months trims the big winners along with the extra losers, and on net that
+costs more return than the avoided losses. Uncertainty here still correlates with realized
+return *volatility* too (pooled correlation with `|r_{t+1}|` = 0.132; the standard deviation of
+realized returns climbs from 0.015 in the most-confident quintile to 0.027-0.029 in the two most
+uncertain), so both a real (if noisy) accuracy signal and a volatility relationship coexist — the
+net effect on this run's Sharpe is still negative because of the tail-winner effect above.
 
-Three things worth flagging honestly about how these numbers were produced:
-- **Leakage fix, no prior baseline to compare against.** The confidence-scaled strategy
-  originally normalized its position weights using the full 1990-2021 OOS uncertainty
+Four things worth flagging honestly about how these numbers were produced:
+- **Leakage fix, no prior buggy-alignment baseline to compare against.** The confidence-scaled
+  strategy originally normalized its position weights using the full 1990-2021 OOS uncertainty
   distribution's min/max — leaking full-sample information into early test years, unlike every
   other leakage rule in this project (validation-only, never test). This was caught and fixed
-  (now normalized per fold, from that fold's own validation-set uncertainty) *before* this
-  notebook was ever run to completion, so there's no previous "leaky" result from this repo to
-  show a before/after against — the numbers above already reflect the fix.
+  (now normalized per fold, from that fold's own validation-set uncertainty) before this
+  notebook was ever run to completion, so there's no prior "leaky" result to show a before/after
+  against for that specific bug.
 - **The `l1=0.001` departure** described above was necessary to get a real uncertainty signal at
   all (at the paper's `l1`, MC-Dropout std was ~1e-7 — see "What's deliberately simplified").
 - **The regular-MT-vs-MC-Dropout-MT comparison is confounded**, as noted above: two things
   changed at once (batch norm → dropout, and `l1` 0.01 → 0.001), so it doesn't isolate which one
   is responsible for MC-Dropout MT's better point-estimate accuracy.
+- **The tail-winner explanation above uses an approximate flag**, not the notebook's exact
+  per-fold boolean mask (not currently persisted to `results/`) — directionally informative, not
+  an exact accounting.
 
 ## Setup
 

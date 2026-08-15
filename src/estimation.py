@@ -89,9 +89,28 @@ def buy_and_hold_accuracy(data, pred_index):
 
 
 def strategy_returns(pred_prob, response_factors):
-    """Equation (3): long factor i when predicted prob > 0.5, flat otherwise; EW across factors."""
+    """Equation (3): long factor i when predicted prob > 0.5, flat otherwise; EW across factors.
+
+    A signal formed at t predicts sign(r_{t+1}) (build_labels_and_panel labels each row with
+    response.shift(-1)), so it must be graded against the return realized in t+1, not the return
+    already observable at t -- grading against r_t is a one-month look-ahead bug, and a serious
+    one here since several of the 137 financial predictors are month-t close cousins of the
+    targets themselves (e.g. HML ~ book-to-market, MOM ~ momentum anomalies), so grading on r_t
+    partly grades the model on numbers already sitting in its own input vector.
+
+    The result stays indexed by signal date t; each row's *value* is next month's realized
+    return. Pooled across all folds, that means the realized-return months this backtest
+    captures run one calendar month later than the signal-date index suggests (e.g. the row
+    labeled with the first OOS signal date now holds the *following* month's return). Fold
+    boundaries (fold_years) are defined on signal/predictor dates and are deliberately left
+    alone -- this fix does not chase exact calendar alignment there.
+    """
     response = response_factors.rename(columns={'Mom': 'MOM'})
-    r = response.loc[pred_prob.index, FACTOR_NAMES]
+    r = response.shift(-1).loc[pred_prob.index, FACTOR_NAMES]
+    assert not r.isna().any().any(), (
+        'strategy_returns: r contains NaN -- pred_prob includes a signal date at or after the '
+        'last date in response_factors, which has no following-month return to grade against.'
+    )
     signal = pd.DataFrame(
         {f: (pred_prob[f'{f}_prob'] > 0.5).astype(int) for f in FACTOR_NAMES}, index=pred_prob.index
     )
@@ -159,7 +178,10 @@ def benchmark_summary(pred_prob, data, response_factors, model_name):
     """One-stop paper-style summary: accuracy (Table 1) + Sharpe/alpha/beta (Table 3) for a model."""
     acc = classification_accuracy(pred_prob, data)
     strat = strategy_returns(pred_prob, response_factors)
-    buy_ew = response_factors.rename(columns={'Mom': 'MOM'}).loc[pred_prob.index, FACTOR_NAMES].mean(axis=1)
+    # same t -> t+1 alignment as strategy_returns (see its docstring), so the spanning regression
+    # pairs the model's strategy return in a given row against the BUY benchmark's return in the
+    # same realized month, not one month earlier.
+    buy_ew = response_factors.rename(columns={'Mom': 'MOM'}).shift(-1).loc[pred_prob.index, FACTOR_NAMES].mean(axis=1)
     sr = annualized_sharpe(strat['EW'])
     span = spanning_regression(strat['EW'], buy_ew)
     out = pd.Series({'Model': model_name, 'Mean Accuracy': acc['Mean'], 'Sharpe Ratio': sr})
