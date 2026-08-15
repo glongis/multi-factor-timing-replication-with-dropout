@@ -12,8 +12,7 @@ off-the-shelf machine learning benchmarks.
 |---|---|---|
 | [`notebooks/Initial MT.ipynb`](notebooks/Initial%20MT.ipynb) | Sec 3.2.1, 3.2.4 | Builds and walk-forward trains the paper's MT architecture (4 shared "hard-sharing" dense layers + 2 factor-specific layers per factor) |
 | [`notebooks/Off-the-shelf Models.ipynb`](notebooks/Off-the-shelf%20Models.ipynb) | Sec 3.2.3 | Same walk-forward procedure, benchmarked against Logistic Regression, Random Forest, and XGBoost (stand-in for the paper's GBT) |
-| [`notebooks/MC Dropout Extension.ipynb`](notebooks/MC%20Dropout%20Extension.ipynb) | — (original extension) | Adds Monte Carlo Dropout uncertainty quantification on top of MT, and tests whether acting on that uncertainty (confidence-scaling or abstaining) improves the trading strategy |
-| [`notebooks/exploratory/start.ipynb`](notebooks/exploratory/start.ipynb) | — | Early scratch work for the data pipeline; superseded by `src/loading.py`, kept for reference only |
+| [`notebooks/MC Dropout Extension.ipynb`](notebooks/MC%20Dropout%20Extension.ipynb) | — (original extension) | Adds Monte Carlo Dropout uncertainty quantification on top of MT, and tests whether acting on that uncertainty (confidence-scaling, abstaining, or vol-regime abstaining) improves the trading strategy |
 
 **Run them in that order** — `Off-the-shelf Models.ipynb` and `MC Dropout Extension.ipynb` both
 read the data through the same `src/loading.py` / `src/estimation.py` helpers as
