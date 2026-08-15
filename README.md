@@ -87,7 +87,34 @@ just corrected the transcription.*
 
 `notebooks/MC Dropout Extension.ipynb` adds Monte Carlo Dropout uncertainty to MT and tests
 three ways of trading on it — full writeup of the method is in the notebook's own intro cell.
-Multi-factor timing performance vs. the multi-factor BUY benchmark (Sharpe 0.59):
+
+**Regular MT vs. MC-Dropout MT, as point-estimate classifiers** (same walk-forward folds, same
+`prob > 0.5` signal rule — this is *before* acting on uncertainty at all; "MC-Dropout MT" here is
+the "Baseline" row of the strategy table below):
+
+| | Regular MT (batch norm, l1=0.01) | MC-Dropout MT (dropout, l1=0.001) |
+|---|---|---|
+| Mean Accuracy | 53.1% | 54.7% |
+| Sharpe Ratio | 0.80 | 0.92 |
+| alpha (annualized %) | 1.23 | 1.80 |
+| t(alpha) | 3.35 | 4.30 |
+| beta | 0.63 | 0.90 |
+| R² (%) | 68.1 | 87.6 |
+
+MC-Dropout MT is ahead on every metric here, including 4 of 5 individual factor accuracies (only
+SMB gets worse: 58.2% → 53.5%; HML, RMW, CMA, MOM all improve). Worth reading carefully, though:
+this isn't a clean "dropout beats batch norm" result. The two models differ in *two* ways at
+once — the trunk regularizer (batch norm vs. dropout) *and* the `l1` strength (0.01 vs. 0.001),
+and the `l1` change wasn't a free choice; it's the fix described below, forced by the fact that
+0.01 collapses the dropout variant's weights to ~0. Nothing here isolates how much of the gap is
+"dropout regularizes better" vs. simply "weaker `l1` let this model use more of the input
+signal." The much higher beta (0.90 vs. 0.63) and R² (87.6% vs. 68.1%) against the passive BUY
+benchmark are also consistent with MC-Dropout MT just calling "up" somewhat more often (accuracy
+rising on MOM but falling on SMB looks like a shifted long bias, not obviously sharper
+classification across the board) rather than a general improvement.
+
+**Does uncertainty-weighting improve on that baseline?** Multi-factor timing performance vs. the
+multi-factor BUY benchmark (Sharpe 0.59):
 
 | Strategy | Sharpe | alpha (annualized %) | t(alpha) | beta | R² (%) |
 |---|---|---|---|---|---|
@@ -95,15 +122,29 @@ Multi-factor timing performance vs. the multi-factor BUY benchmark (Sharpe 0.59)
 | Confidence-scaled (position × confidence) | 1.03 | 1.64 | 5.18 | 0.50 | 69.9 |
 | Abstain on flagged (skip top 20% uncertain) | 1.08 | 2.51 | 4.36 | 0.62 | 59.6 |
 
+Both beat the baseline on Sharpe; abstain also beats it on alpha (confidence-scaled's alpha
+actually dips slightly, 1.80% → 1.64%, but with much lower beta, so it's still a real
+risk-adjusted gain). I haven't run a significance test on whether these Sharpes are
+statistically distinguishable *from each other* (only that each strategy's alpha clears zero on
+its own, per the t-stats above) — with 32 years of data and a single training seed, a
+0.11-0.16 Sharpe gap is plausible but not proven robust on one run.
+
 **Calibration check** (is the uncertainty signal actually informative?): mean classification
 accuracy on flagged (top 20% most uncertain, calibrated per fold on validation data) vs.
 unflagged factor-months — **54.8% flagged (n=420) vs. 54.7% unflagged (n=1495)**. Essentially no
-gap. Reported plainly: MC-Dropout uncertainty in this run doesn't detectably track which
-months the model gets wrong more often, even though weighting by it still raises Sharpe —
-plausibly because the uncertainty signal tracks return volatility/position risk more than
-directional accuracy specifically, but that's a hypothesis, not something this pass verified.
+gap. Reported plainly: MC-Dropout uncertainty in this run does not detectably track which
+months the model gets wrong more often.
 
-Two things worth flagging honestly about how these numbers were produced:
+So what's driving the Sharpe gain above, if not accuracy? Checked directly: MC-Dropout
+uncertainty correlates weakly but clearly with *realized return volatility* instead (pooled
+correlation with `|realized return|` = 0.095; bucketing all factor-months into uncertainty
+quintiles, the standard deviation of realized returns climbs from 0.024 in the most-confident
+quintile to 0.041 in the second-most-uncertain and 0.036 in the most-uncertain). Confidence-
+scaling and abstaining are best read as **volatility-timing**, not smarter direction-calling —
+they cut exposure in choppier months, which mechanically raises Sharpe even with zero directional
+edge, consistent with the sharp beta/R² drop in the strategy table above.
+
+Three things worth flagging honestly about how these numbers were produced:
 - **Leakage fix, no prior baseline to compare against.** The confidence-scaled strategy
   originally normalized its position weights using the full 1990-2021 OOS uncertainty
   distribution's min/max — leaking full-sample information into early test years, unlike every
@@ -113,6 +154,9 @@ Two things worth flagging honestly about how these numbers were produced:
   show a before/after against — the numbers above already reflect the fix.
 - **The `l1=0.001` departure** described above was necessary to get a real uncertainty signal at
   all (at the paper's `l1`, MC-Dropout std was ~1e-7 — see "What's deliberately simplified").
+- **The regular-MT-vs-MC-Dropout-MT comparison is confounded**, as noted above: two things
+  changed at once (batch norm → dropout, and `l1` 0.01 → 0.001), so it doesn't isolate which one
+  is responsible for MC-Dropout MT's better point-estimate accuracy.
 
 ## Setup
 
