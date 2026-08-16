@@ -218,6 +218,27 @@ deterministic (no retraining noise), but its measured effect on Sharpe still run
 freshly retrained baseline model it's overlaid on, so the "beats baseline" comparison isn't
 immune to the same run-to-run noise documented throughout this section.
 
+**Considered and rejected: layering MC-Dropout's flag on top of vol-regime abstain.** If
+MC-Dropout's uncertainty carries information beyond what volatility already catches, it should
+still show a real accuracy gap specifically on the months vol-regime *doesn't* abstain from —
+that's the direct test of whether layering the two signals is worth building. It doesn't:
+
+| Subset | MC-Dropout-flagged acc | MC-Dropout-unflagged acc | Gap |
+|---|---|---|---|
+| Full sample (n=1915) | 54.1% (n=455) | 54.4% (n=1460) | +0.3pp |
+| Vol-regime kept (n=1484) | 53.0% (n=298) | 55.1% (n=1186) | +2.0pp |
+| Vol-regime abstained (n=431) | 56.1% (n=157) | 51.5% (n=274) | -4.6pp |
+
+On the kept subset, the gap is +2.0pp in the expected direction — real-looking, but roughly half
+the ≈4pp bar set in advance for "worth building," and smaller than the standard error on a
+sample of 298 (~2.9pp), so not statistically distinguishable from zero. It also explains why the
+full-sample calibration check above reads as flat: that's an average of this modest positive gap
+in the calm months and a **reversed** -4.6pp gap in the crash months vol-regime already sits out
+(where MC-Dropout-flagged months were, if anything, more accurate) — the two effects roughly
+cancel. MC-Dropout's apparent calibration value looks concentrated in (or confounded by) exactly
+the high-volatility months vol-regime already handles, not an independent signal in the
+remaining ones, so a layered strategy was not built.
+
 Five things worth flagging honestly about how these numbers were produced:
 - **Leakage fix, no prior buggy-alignment baseline to compare against.** The confidence-scaled
   strategy originally normalized its position weights using the full 1990-2021 OOS uncertainty
