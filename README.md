@@ -1,7 +1,7 @@
 # Multi-Factor Timing with Deep Learning — Replication + Volatility-Regime Abstention Overlay
 
 A partial replication of Cotturo, Liu, and Proner (2025), ["Multi-Factor Timing with Deep
-Learning"](forecasting the sign of
+Learning"] (forecasting the sign of
 next-month returns for five Fama-French/momentum factors with a multi-task neural network,
 benchmarked against off-the-shelf ML models), extended with an original addition: a
 **volatility-regime abstention overlay** — a simple, model-free "scanner" that sits a factor out
