@@ -19,3 +19,6 @@ data/*.parquet
 
 # Claude Code local session state
 .claude/
+
+# Scratch/temporary notebooks and analysis — never pushed
+scratch/
