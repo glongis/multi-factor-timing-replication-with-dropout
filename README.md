@@ -17,10 +17,13 @@ worst diagnosed losses in the sample.
 | [`notebooks/Initial MT.ipynb`](notebooks/Initial%20MT.ipynb) | Builds and walk-forward trains the paper's MT architecture (4 shared dense layers + 2 factor-specific layers per factor) |
 | [`notebooks/Off-the-shelf Models.ipynb`](notebooks/Off-the-shelf%20Models.ipynb) | Same walk-forward procedure, benchmarked against Logistic Regression, Random Forest, and XGBoost |
 | [`notebooks/MC Dropout Extension.ipynb`](notebooks/MC%20Dropout%20Extension.ipynb) | Adds MC Dropout uncertainty on top of MT, and tests four ways of trading on risk signals — including the volatility scanner |
+| [`notebooks/RF Investigation.ipynb`](notebooks/RF%20Investigation.ipynb) | Diagnostic on why Random Forest's Sharpe comes out well above both the paper's own RF and its headline MT model — read-only, depends on the first two |
 
-**Run them in that order** — the latter two read data through the same `src/loading.py` /
-`src/estimation.py` helpers as `Initial MT.ipynb`, and the benchmark cell in `Off-the-shelf
-Models.ipynb` picks up `results/mt_oos_predictions.csv` if it's already been generated.
+**Run the first three in that order** — the latter two read data through the same
+`src/loading.py` / `src/estimation.py` helpers as `Initial MT.ipynb`, and the benchmark cell in
+`Off-the-shelf Models.ipynb` picks up `results/mt_oos_predictions.csv` if it's already been
+generated. `RF Investigation.ipynb` only reads results the first two already wrote to `results/`,
+so it can run any time after those two.
 
 ## The volatility scanner
 
@@ -32,23 +35,31 @@ of the 32 walk-forward folds from that fold's *validation*-period data only, nev
 window and threshold (3 months, 80th percentile) were fixed in advance and not tuned against the
 results below.
 
-Multi-factor timing performance vs. the always-long BUY benchmark (Sharpe 0.60):
+Multi-factor timing performance vs. the always-long BUY benchmark (Sharpe 0.60), **mean across 5
+independent reruns of the exact same code and fixed seed** (range in parentheses) — see
+"Run-to-run noise" below for why a single run isn't trustworthy enough to report alone here:
 
 | Strategy | Sharpe | alpha (annualized %) | t(alpha) | beta | R² (%) |
 |---|---|---|---|---|---|
-| Baseline (unweighted MT rule) | 0.66 | 0.50 | 1.21 | 0.88 | 85.3 |
-| MC-Dropout confidence-scaled | 0.53 | 0.08 | 0.21 | 0.54 | 70.2 |
-| MC-Dropout abstain (top 20% uncertain) | 0.56 | 0.40 | 0.79 | 0.62 | 58.5 |
-| **Volatility scanner (abstain)** | **0.67** | **0.97** | **1.97** | 0.44 | 41.6 |
+| Baseline (unweighted MT rule) | 0.65 (0.55–0.70) | 0.51 (0.07–0.84) | 1.25 (0.18–1.79) | 0.83 (0.79–0.87) | 80.5 (74.9–82.9) |
+| MC-Dropout confidence-scaled | 0.56 (0.45–0.64) | 0.28 (−0.08–0.55) | 0.72 (−0.21–1.29) | 0.46 (0.40–0.51) | 60.2 (53.3–66.4) |
+| MC-Dropout abstain (top 20% uncertain) | 0.56 (0.34–0.72) | 0.41 (−0.52–1.08) | 0.72 (−0.84–1.67) | 0.63 (0.55–0.70) | 57.4 (50.8–65.9) |
+| **Volatility scanner (abstain)** | **0.69 (0.58–0.78)** | **1.09 (0.77–1.35)** | **2.21 (1.53–2.88)** | 0.43 (0.40–0.45) | 38.4 (36.6–41.7) |
 
-The scanner is the only one of the four that beats the baseline, with the best t(alpha) of the
-four (1.97 — short of conventional significance, but closest). Two checks on why it works:
+The scanner has the highest mean Sharpe and mean t(alpha) of the four — 3 of 5 reruns land above
+conventional significance (t > 2), the other 2 sit just under it, and no other strategy gets
+close to that hit rate. Its Sharpe stays in a tight band around BUY's 0.60, dipping just below it
+in the worst of the five reruns (0.58) but clearing it comfortably on average (0.69) and at best
+(0.78) — a real edge, not a guarantee every single time it's retrained. Two checks on why it
+works (both diagnostics below use one representative run, since they're about specific
+months/predictions rather than a distribution):
 
 - **Hit rate on the four worst diagnosed losses**: Feb 2000 SMB, Dec 2008 HML, Apr 2009 MOM, and
   May 2021 HML were all correctly abstained — 4 for 4.
-- **Independent of MC Dropout**: of all factor-months the scanner sits out (431, 22.5% of the
-  sample), only 36.4% were also flagged uncertain by MC Dropout — it's catching a different kind
-  of risk, not relabeling the same months.
+- **Mostly independent of MC Dropout**: of all factor-months the scanner sits out (431, 22.5% of
+  the sample), roughly a third were also flagged uncertain by MC Dropout (32.7% in this run,
+  36.4% in an earlier one) — it's catching a different kind of risk, not relabeling the same
+  months.
 
 That independence has a clear cause. A diagnostic on the worst MC-Dropout-flagged losing months
 found they were **high-conviction calls, not weak ones** — mean conviction 0.67 across 149
@@ -72,10 +83,13 @@ for "worth building," and smaller than the ~2.9pp standard error at that sample 
 distinguishable from zero. MC Dropout's apparent value looks concentrated in exactly the
 high-volatility months the scanner already handles, so a layered strategy wasn't built.
 
-**Caveats**: this is one run — the scanner's flag itself is fully deterministic, but its measured
-Sharpe/alpha runs through a freshly retrained MT model each time (see run-to-run noise below), so
-the "beats baseline" result hasn't been checked across multiple seeds. The threshold was a single
-reasonable default, not swept against alternatives.
+**Caveats**: the scanner's flag itself is fully deterministic (computed from realized returns,
+no model involved), but its measured Sharpe/alpha runs through a freshly retrained MT model each
+time (see run-to-run noise below), which is why the table above reports a 5-run range rather than
+one number — `notebooks/MC Dropout Extension.ipynb` reruns the full walk-forward training
+(`src/mcdropout.py`'s `run_stability`) 5 times with nothing changed but TensorFlow's own
+non-determinism. The threshold (3-month window, 80th percentile) was a single reasonable default,
+fixed in advance and not swept against alternatives.
 
 ## Results vs. the paper, out-of-sample Jan 1990 – Dec 2021
 
@@ -98,7 +112,9 @@ procedure, and data construction otherwise match the paper.
 **Run-to-run noise**: every neural-net number above moves between runs — TensorFlow training
 isn't perfectly deterministic even with a fixed seed, and this repo uses one seed instead of the
 paper's 10-seed ensemble. Observed MT accuracy has ranged 52–55% across repeated runs on the same
-code and data; treat exact figures as indicative, not precise.
+code and data; treat exact figures as indicative, not precise. `MC Dropout Extension.ipynb`
+handles this directly for its own headline numbers by reporting a 5-run range instead of a single
+draw (see the volatility scanner section above) — the other notebooks report one run each.
 
 **Trading-return correctness**: strategy returns are graded against the return realized the month
 *after* the signal date (matching what each model actually predicts, `sign(r_{t+1})`), not the
@@ -163,7 +179,9 @@ already-running kernel.
 src/
   loading.py         # data pull + cache (Ken French, FRED-MD, OpenAP)
   estimation.py      # shared walk-forward split / standardization / scoring helpers,
-                      # used identically by all three notebooks
+                      # used identically by all four notebooks
+  mcdropout.py        # MC-Dropout MT model + walk-forward training + multi-run stability
+                      # sweep, used by MC Dropout Extension.ipynb
 notebooks/            # see table above
 data/                 # cached parquet pulls (gitignored, regenerated on first import)
 results/               # OOS predictions + strategy returns written by the notebooks
