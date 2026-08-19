@@ -1,4 +1,4 @@
-"""MC Dropout uncertainty for the MT architecture, used by `MC Dropout Extension.ipynb`.
+"""MC Dropout uncertainty for the MT architecture, used by `mc-dropout-extension.ipynb`.
 
 Shared here (rather than defined inline in the notebook) for the same reason as
 `estimation.py`: one copy of the model + walk-forward logic, so a single run and a
@@ -17,9 +17,9 @@ FACTOR_NAMES = est.FACTOR_NAMES
 N_MC_SAMPLES = 50           # forward passes per prediction; paper's own NN ensembling uses 10 seeds, 30-100 is the usual MC Dropout range
 UNCERTAINTY_QUANTILE = 0.80  # flag the most-uncertain 20% of factor-months, calibrated per fold on validation data
 
-# l1=0.01 (the value used by every other neural net in this project, and the smallest value in
+# l1=0.01 (the value used by every other neural net in this project, and one of four points in
 # the paper's own Table IA1 grid for NN/LSTM/MT models {0.005, 0.007, 0.01, 0.02}) collapses this
-# model's shared-trunk weights to ~0 during training: the plain MT model in Initial MT.ipynb uses
+# model's shared-trunk weights to ~0 during training: the plain MT model in initial-mt.ipynb uses
 # the same l1 without issue because batch norm renormalizes activations regardless of raw weight
 # scale, but this variant replaces batch norm with dropout (see the notebook's markdown), so
 # nothing counteracts the L1 penalty and Adam just drives the input-dependent weights to zero,
@@ -40,7 +40,7 @@ POSITION_WEIGHT_THRESHOLD = 0.05  # confidence-scaled weight below this counts a
 
 def build_mt_mcdropout_model(n_features, l1_value=L1_VALUE, learning_rate=0.001, dropout_rate=0.2, seed=0):
     """MT's shared trunk (4 hard-sharing layers, 32 units) and factor-specific heads (2 layers,
-    8 units, per factor) are unchanged from build_mt_model in Initial MT.ipynb. The only
+    8 units, per factor) are unchanged from build_mt_model in initial-mt.ipynb. The only
     architectural change: batch norm -> dropout in the shared trunk, so dropout can be forced
     on at prediction time (training=True) without also perturbing batch norm's statistics."""
     tf.random.set_seed(seed)
@@ -88,11 +88,10 @@ def _train_walkforward(data, feature_cols, verbose=False):
     procedure as every other notebook in this project). Returns the raw per-factor-month
     predictions, uncertainty, and uncertainty flags, plus each fold's validation-set std
     bounds (needed to normalize the confidence-scaled strategy's weights per-fold rather than
-    over the pooled OOS series -- a leakage fix) and validation-set conviction cutoff.
+    over the pooled OOS series -- a leakage fix).
     """
     mean_records, std_records, flag_records = [], [], []
     bound_min_records, bound_max_records = [], []
-    conviction_cutoff_records = []
 
     for test_year in est.OOS_TEST_YEARS:
         train, val, test, X_train, X_val, X_test = est.prepare_fold(data, feature_cols, test_year)
@@ -112,8 +111,6 @@ def _train_walkforward(data, feature_cols, verbose=False):
         val_mean, val_std = val_mc.mean(axis=0), val_mc.std(axis=0)
         cutoff = np.quantile(val_std.flatten(), UNCERTAINTY_QUANTILE)
         val_std_min, val_std_max = val_std.min(axis=0), val_std.max(axis=0)
-        val_conviction = np.abs(val_mean - 0.5)
-        conviction_cutoff = np.median(val_conviction.flatten())
 
         test_mc = mc_dropout_predict(model, X_test.values)
         test_mean, test_std = test_mc.mean(axis=0), test_mc.std(axis=0)
@@ -127,13 +124,10 @@ def _train_walkforward(data, feature_cols, verbose=False):
         flag_records.append(pd.DataFrame(test_flag, index=test.index, columns=cols_flag))
         bound_min_records.append(pd.DataFrame(np.tile(val_std_min, (len(test), 1)), index=test.index, columns=cols_std))
         bound_max_records.append(pd.DataFrame(np.tile(val_std_max, (len(test), 1)), index=test.index, columns=cols_std))
-        conviction_cutoff_records.append(pd.DataFrame(
-            np.full((len(test), len(FACTOR_NAMES)), conviction_cutoff), index=test.index, columns=cols_std
-        ))
 
         if verbose:
             print(f'{test_year}: cutoff={cutoff:.4f}  mean test uncertainty={test_std.mean():.4f}  '
-                  f'flagged={test_flag.mean():.0%}  conviction_cutoff={conviction_cutoff:.4f}')
+                  f'flagged={test_flag.mean():.0%}')
 
     return dict(
         oos_mean=pd.concat(mean_records).sort_index(),
@@ -141,7 +135,6 @@ def _train_walkforward(data, feature_cols, verbose=False):
         oos_flag=pd.concat(flag_records).sort_index(),
         oos_std_val_min=pd.concat(bound_min_records).sort_index(),
         oos_std_val_max=pd.concat(bound_max_records).sort_index(),
-        oos_conviction_cutoff=pd.concat(conviction_cutoff_records).sort_index(),
     )
 
 
@@ -234,7 +227,7 @@ def run_walkforward(data, feature_cols, response_factors, verbose=False):
     }, index=PERF_METRICS)
 
     return dict(
-        oos_mean=oos_mean, oos_std=oos_std, oos_flag=oos_flag, oos_conviction_cutoff=wf['oos_conviction_cutoff'],
+        oos_mean=oos_mean, oos_std=oos_std, oos_flag=oos_flag,
         oos_vol_flag=oos_vol_flag, signal=signal, confidence_weight=confidence_weight, flag_vals=flag_vals,
         correct=correct, baseline_strat=baseline_strat, scaled_strat=scaled_strat, abstain_strat=abstain_strat,
         vol_regime_strat=vol_regime_strat, buy_ew=buy_ew, perf=perf,

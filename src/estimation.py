@@ -156,24 +156,6 @@ def walk_forward_predict_single_task(data, feature_cols, factor, fit_predict_fn,
     return pd.concat(records).sort_index()
 
 
-def make_sequences(X, lookback):
-    """Sliding windows of length `lookback` ending at each row of X (must be chronologically
-    sorted). Rows with less than `lookback` months of history are left-zero-padded — after
-    standardization, 0 represents the training-sample mean, a neutral fill for missing history.
-    Used to feed the single-task LSTM benchmark a fixed window of predictor history per month,
-    since the paper's Internet Appendix describes the LSTM's gating mechanics but not an explicit
-    lookback length; 12 months (one macro/financial cycle) is this notebook's choice.
-    """
-    values = X.values.astype('float32')
-    n, p = values.shape
-    seqs = np.zeros((n, lookback, p), dtype='float32')
-    for i in range(n):
-        start = max(0, i - lookback + 1)
-        window = values[start:i + 1]
-        seqs[i, -window.shape[0]:] = window
-    return seqs
-
-
 def benchmark_summary(pred_prob, data, response_factors, model_name):
     """One-stop paper-style summary: accuracy (Table 1) + Sharpe/alpha/beta (Table 3) for a model."""
     acc = classification_accuracy(pred_prob, data)

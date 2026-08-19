@@ -14,20 +14,20 @@ worst diagnosed losses in the sample.
 
 | Notebook | What it does |
 |---|---|
-| [`notebooks/Initial MT.ipynb`](notebooks/Initial%20MT.ipynb) | Builds and walk-forward trains the paper's MT architecture (4 shared dense layers + 2 factor-specific layers per factor) |
-| [`notebooks/Off-the-shelf Models.ipynb`](notebooks/Off-the-shelf%20Models.ipynb) | Same walk-forward procedure, benchmarked against Logistic Regression, Random Forest, and XGBoost |
-| [`notebooks/MC Dropout Extension.ipynb`](notebooks/MC%20Dropout%20Extension.ipynb) | Adds MC Dropout uncertainty on top of MT, and tests four ways of trading on risk signals — including the volatility scanner |
-| [`notebooks/RF Investigation.ipynb`](notebooks/RF%20Investigation.ipynb) | Diagnostic on why Random Forest's Sharpe comes out well above both the paper's own RF and its headline MT model — read-only, depends on the first two |
+| [`notebooks/initial-mt.ipynb`](notebooks/initial-mt.ipynb) | Builds and walk-forward trains the paper's MT architecture (4 shared dense layers + 2 factor-specific layers per factor) |
+| [`notebooks/off-the-shelf-models.ipynb`](notebooks/off-the-shelf-models.ipynb) | Same walk-forward procedure, benchmarked against Logistic Regression, Random Forest, and XGBoost |
+| [`notebooks/mc-dropout-extension.ipynb`](notebooks/mc-dropout-extension.ipynb) | Adds MC Dropout uncertainty on top of MT, and tests four ways of trading on risk signals — including the volatility scanner |
+| [`notebooks/rf-investigation.ipynb`](notebooks/rf-investigation.ipynb) | Diagnostic on why Random Forest's Sharpe comes out well above both the paper's own RF and its headline MT model — read-only, depends on the first two |
 
 **Run the first three in that order** — the latter two read data through the same
-`src/loading.py` / `src/estimation.py` helpers as `Initial MT.ipynb`, and the benchmark cell in
-`Off-the-shelf Models.ipynb` picks up `results/mt_oos_predictions.csv` if it's already been
-generated. `RF Investigation.ipynb` only reads results the first two already wrote to `results/`,
+`src/loading.py` / `src/estimation.py` helpers as `initial-mt.ipynb`, and the benchmark cell in
+`off-the-shelf-models.ipynb` picks up `results/mt_oos_predictions.csv` if it's already been
+generated. `rf-investigation.ipynb` only reads results the first two already wrote to `results/`,
 so it can run any time after those two.
 
 ## The volatility scanner
 
-`notebooks/MC Dropout Extension.ipynb` computes trailing 3-month realized volatility for each
+`notebooks/mc-dropout-extension.ipynb` computes trailing 3-month realized volatility for each
 factor's own return series — no model, no look-ahead, only returns already known by the signal
 date — and abstains (goes flat instead of long) whenever that trailing volatility exceeds a
 cutoff. The cutoff is the 80th percentile of trailing volatility, calibrated separately for each
@@ -41,52 +41,54 @@ independent reruns of the exact same code and fixed seed** (range in parentheses
 
 | Strategy | Sharpe | alpha (annualized %) | t(alpha) | beta | R² (%) |
 |---|---|---|---|---|---|
-| Baseline (unweighted MT rule) | 0.65 (0.55–0.70) | 0.51 (0.07–0.84) | 1.25 (0.18–1.79) | 0.83 (0.79–0.87) | 80.5 (74.9–82.9) |
-| MC-Dropout confidence-scaled | 0.56 (0.45–0.64) | 0.28 (−0.08–0.55) | 0.72 (−0.21–1.29) | 0.46 (0.40–0.51) | 60.2 (53.3–66.4) |
-| MC-Dropout abstain (top 20% uncertain) | 0.56 (0.34–0.72) | 0.41 (−0.52–1.08) | 0.72 (−0.84–1.67) | 0.63 (0.55–0.70) | 57.4 (50.8–65.9) |
-| **Volatility scanner (abstain)** | **0.69 (0.58–0.78)** | **1.09 (0.77–1.35)** | **2.21 (1.53–2.88)** | 0.43 (0.40–0.45) | 38.4 (36.6–41.7) |
+| Baseline (unweighted MT rule) | 0.62 (0.55–0.70) | 0.34 (−0.03–0.68) | 0.97 (−0.08–1.78) | 0.85 (0.83–0.87) | 84.5 (82.6–86.4) |
+| MC-Dropout confidence-scaled | 0.54 (0.37–0.64) | 0.14 (−0.43–0.51) | 0.43 (−1.20–1.54) | 0.49 (0.46–0.56) | 65.9 (61.8–68.6) |
+| MC-Dropout abstain (top 20% uncertain) | 0.59 (0.36–0.77) | 0.48 (−0.60–1.28) | 0.80 (−1.24–2.21) | 0.64 (0.59–0.73) | 60.1 (55.9–66.2) |
+| **Volatility scanner (abstain)** | **0.63 (0.55–0.77)** | **0.88 (0.56–1.27)** | **1.72 (1.18–2.56)** | 0.44 (0.42–0.45) | 40.4 (37.3–44.2) |
 
-The scanner has the highest mean Sharpe and mean t(alpha) of the four — 3 of 5 reruns land above
-conventional significance (t > 2), the other 2 sit just under it, and no other strategy gets
-close to that hit rate. Its Sharpe stays in a tight band around BUY's 0.60, dipping just below it
-in the worst of the five reruns (0.58) but clearing it comfortably on average (0.69) and at best
-(0.78) — a real edge, not a guarantee every single time it's retrained. Two checks on why it
-works (both diagnostics below use one representative run, since they're about specific
-months/predictions rather than a distribution):
+The scanner has the highest mean Sharpe and mean t(alpha) of the four — though this rerun landed
+softer than earlier ones: only 2 of 5 reruns clear conventional significance (t > 2) this time,
+against 3 of 5 previously (both counts are cited here on purpose — see "Run-to-run noise" below).
+Its Sharpe stays in a tight band around BUY's 0.60, dipping just below it in the worst of the five
+reruns (0.55) but clearing it on average (0.63) and comfortably at best (0.77) — a real edge, not
+a guarantee every single time it's retrained. Two checks on why it works (both diagnostics below
+use one representative run, since they're about specific months/predictions rather than a
+distribution):
 
 - **Hit rate on the four worst diagnosed losses**: Feb 2000 SMB, Dec 2008 HML, Apr 2009 MOM, and
   May 2021 HML were all correctly abstained — 4 for 4.
 - **Mostly independent of MC Dropout**: of all factor-months the scanner sits out (431, 22.5% of
-  the sample), roughly a third were also flagged uncertain by MC Dropout (32.7% in this run,
-  36.4% in an earlier one) — it's catching a different kind of risk, not relabeling the same
-  months.
+  the sample), roughly a third were also flagged uncertain by MC Dropout (36.2% in this run) —
+  it's catching a different kind of risk, not relabeling the same months.
 
-That independence has a clear cause. A diagnostic on the worst MC-Dropout-flagged losing months
-found they were **high-conviction calls, not weak ones** — mean conviction 0.67 across 149
-qualifying months, more high-conviction (>0.7, n=56) than low-conviction (0.50–0.58, n=42). MC
-Dropout's 50 stochastic sub-networks all learn the same about-to-break pattern together, so the
-model's self-assessed uncertainty doesn't flag a genuine regime break in advance — a known
-failure mode, not a bug here. That result also killed a plausible follow-up (conviction-gated
-abstention: only sit out when both flagged uncertain *and* weakly convicted); it was never built
-because the diagnostic showed it would have kept exactly the losing positions at full size.
+That independence has a clear cause. A diagnostic on the MC-Dropout-flagged factor-months where
+the baseline strategy went on to lose money (a long call that didn't pay off, since baseline only
+ever invests when its predicted probability exceeds 50%) found they were **high-conviction calls,
+not weak ones** — mean conviction (probability) 0.68 across 169 qualifying months, more
+high-conviction (>0.70, n=67) than low-conviction (0.50–0.58, n=27). MC Dropout's 50 stochastic
+sub-networks all learn the same about-to-break pattern together, so the model's self-assessed
+uncertainty doesn't flag a genuine regime break in advance — a known failure mode, not a bug here.
+That result also killed a plausible follow-up (conviction-gated abstention: only sit out when both
+flagged uncertain *and* weakly convicted); it was never built because the diagnostic showed it
+would have kept exactly the losing positions at full size.
 
 A further check tested whether *layering* MC Dropout's flag on top of the scanner adds value —
 i.e., whether MC Dropout catches anything extra on the months the scanner doesn't already sit out:
 
-| Subset | MC-Dropout-flagged acc | MC-Dropout-unflagged acc | Gap |
-|---|---|---|---|
-| Scanner keeps (n=1484) | 53.0% (n=298) | 55.1% (n=1186) | +2.0pp |
-| Scanner abstains (n=431) | 56.1% (n=157) | 51.5% (n=274) | -4.6pp |
+| Subset | MC-Dropout-flagged acc | MC-Dropout-unflagged acc | Gap | SE of gap |
+|---|---|---|---|---|
+| Scanner keeps (n=1484) | 53.4% (n=320) | 53.6% (n=1164) | −0.2pp | 3.2pp |
+| Scanner abstains (n=431) | 50.0% (n=156) | 52.4% (n=275) | −2.4pp | 5.0pp |
 
-The +2.0pp gap on the kept subset is in the expected direction but below a ≈4pp bar set in advance
-for "worth building," and smaller than the ~2.9pp standard error at that sample size — not
-distinguishable from zero. MC Dropout's apparent value looks concentrated in exactly the
-high-volatility months the scanner already handles, so a layered strategy wasn't built.
+Both gaps are negative — MC-Dropout-flagged months are not even directionally more accurate than
+unflagged ones within either subset, let alone by a margin that clears their own standard errors
+(3.2pp and 5.0pp). MC Dropout's flag adds nothing on top of the scanner in this run, so a layered
+strategy wasn't built.
 
 **Caveats**: the scanner's flag itself is fully deterministic (computed from realized returns,
 no model involved), but its measured Sharpe/alpha runs through a freshly retrained MT model each
 time (see run-to-run noise below), which is why the table above reports a 5-run range rather than
-one number — `notebooks/MC Dropout Extension.ipynb` reruns the full walk-forward training
+one number — `notebooks/mc-dropout-extension.ipynb` reruns the full walk-forward training
 (`src/mcdropout.py`'s `run_stability`) 5 times with nothing changed but TensorFlow's own
 non-determinism. The threshold (3-month window, 80th percentile) was a single reasonable default,
 fixed in advance and not swept against alternatives.
@@ -102,8 +104,8 @@ Mean out-of-sample classification accuracy (paper Table 1) and multi-factor timi
 | LR | 51.1% | 53.1% | 0.64 | 0.61 |
 | RF | 56.3% | 55.6% | 0.84 | 0.66 |
 | XGBoost (≈ GBT) | 54.6% | 54.8% | 0.79 | 0.61 |
-| **MT** | **52.3%** | 55.4% | **0.55** | 0.69 |
-| MC-Dropout MT | 54.3% | — | 0.66 | — |
+| **MT** | **54.3%** | 55.4% | **0.67** | 0.69 |
+| MC-Dropout MT | 53.1% | — | 0.60 | — |
 
 MT landing under the paper's fully-tuned, 10-seed-ensembled numbers is expected given the
 single-seed/no-grid-search simplification noted below, not a bug — architecture, walk-forward
@@ -112,7 +114,7 @@ procedure, and data construction otherwise match the paper.
 **Run-to-run noise**: every neural-net number above moves between runs — TensorFlow training
 isn't perfectly deterministic even with a fixed seed, and this repo uses one seed instead of the
 paper's 10-seed ensemble. Observed MT accuracy has ranged 52–55% across repeated runs on the same
-code and data; treat exact figures as indicative, not precise. `MC Dropout Extension.ipynb`
+code and data; treat exact figures as indicative, not precise. `mc-dropout-extension.ipynb`
 handles this directly for its own headline numbers by reporting a 5-run range instead of a single
 draw (see the volatility scanner section above) — the other notebooks report one run each.
 
@@ -130,11 +132,11 @@ ensembling** (a single seed and fixed hyperparameters are used instead — the m
 accuracy/Sharpe gap above), the **JKP 149-factor extension** and **Shapley-value importance**
 (paper Sec 5/4.6), **EN and SVM benchmarks**, and a **single-task LSTM benchmark** (implemented,
 then removed — retraining it for all 32 folds × 5 factors took ~45–50 min, not worth it here).
-The MC-Dropout MT model above also uses `l1=0.001` rather than the paper's grid (0.005–0.02),
-because every grid value collapses its shared-trunk weights to ~0 without batch norm to
-counteract the penalty (see the notebook's model-building cell) — so its accuracy edge over
-regular MT isn't purely a dropout-vs-batch-norm comparison, since the regularization strength
-changed too.
+The MC-Dropout MT model above also uses `l1=0.001`, off the paper's own grid of
+{0.005, 0.007, 0.01, 0.02}, because every grid value — including 0.005, the smallest — collapses
+its shared-trunk weights to ~0 without batch norm to counteract the penalty (see
+`src/mcdropout.py`) — so its accuracy edge over regular MT isn't purely a dropout-vs-batch-norm
+comparison, since the regularization strength changed too.
 
 ## Setup
 
@@ -181,7 +183,7 @@ src/
   estimation.py      # shared walk-forward split / standardization / scoring helpers,
                       # used identically by all four notebooks
   mcdropout.py        # MC-Dropout MT model + walk-forward training + multi-run stability
-                      # sweep, used by MC Dropout Extension.ipynb
+                      # sweep, used by mc-dropout-extension.ipynb
 notebooks/            # see table above
 data/                 # cached parquet pulls (gitignored, regenerated on first import)
 results/               # OOS predictions + strategy returns written by the notebooks
@@ -190,3 +192,7 @@ results/               # OOS predictions + strategy returns written by the noteb
 ## Reference
 
 Cotturo, P., Liu, F., and Proner, R. (2025). *Multi-Factor Timing with Deep Learning.*
+
+## License
+
+[MIT](LICENSE)
