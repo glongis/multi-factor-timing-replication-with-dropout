@@ -41,31 +41,31 @@ independent reruns of the exact same code and fixed seed** (range in parentheses
 
 | Strategy | Sharpe | alpha (annualized %) | t(alpha) | beta | R² (%) |
 |---|---|---|---|---|---|
-| Baseline (unweighted MT rule) | 0.62 (0.55–0.70) | 0.34 (−0.03–0.68) | 0.97 (−0.08–1.78) | 0.85 (0.83–0.87) | 84.5 (82.6–86.4) |
-| MC-Dropout confidence-scaled | 0.54 (0.37–0.64) | 0.14 (−0.43–0.51) | 0.43 (−1.20–1.54) | 0.49 (0.46–0.56) | 65.9 (61.8–68.6) |
-| MC-Dropout abstain (top 20% uncertain) | 0.59 (0.36–0.77) | 0.48 (−0.60–1.28) | 0.80 (−1.24–2.21) | 0.64 (0.59–0.73) | 60.1 (55.9–66.2) |
-| **Volatility scanner (abstain)** | **0.63 (0.55–0.77)** | **0.88 (0.56–1.27)** | **1.72 (1.18–2.56)** | 0.44 (0.42–0.45) | 40.4 (37.3–44.2) |
+| Baseline (unweighted MT rule) | 0.61 (0.58–0.68) | 0.29 (0.05–0.56) | 0.82 (0.20–1.69) | 0.89 (0.86–0.93) | 84.8 (80.4–88.8) |
+| MC-Dropout confidence-scaled | 0.57 (0.54–0.60) | 0.30 (0.23–0.45) | 0.85 (0.60–1.20) | 0.48 (0.43–0.53) | 62.5 (56.3–70.2) |
+| MC-Dropout abstain (top 20% uncertain) | 0.60 (0.42–0.70) | 0.54 (−0.33–1.03) | 0.98 (−0.56–1.79) | 0.64 (0.54–0.72) | 61.2 (46.4–68.3) |
+| **Volatility scanner (abstain)** | **0.66 (0.59–0.77)** | **0.98 (0.80–1.30)** | **2.01 (1.50–2.73)** | 0.44 (0.42–0.46) | 40.0 (35.6–43.1) |
 
-The scanner has the highest mean Sharpe and mean t(alpha) of the four — though this rerun landed
-softer than earlier ones: only 2 of 5 reruns clear conventional significance (t > 2) this time,
-against 3 of 5 previously (both counts are cited here on purpose — see "Run-to-run noise" below).
-Its Sharpe stays in a tight band around BUY's 0.60, dipping just below it in the worst of the five
-reruns (0.55) but clearing it on average (0.63) and comfortably at best (0.77) — a real edge, not
-a guarantee every single time it's retrained. Two checks on why it works (both diagnostics below
-use one representative run, since they're about specific months/predictions rather than a
+The scanner has the highest mean Sharpe and mean t(alpha) of the four. Its Sharpe stays in a tight
+band around BUY's 0.60, dipping just below it in the worst of the five reruns (0.59) but clearing
+it on average (0.66) and comfortably at best (0.77) — a real edge, not a guarantee every single
+time it's retrained. t(alpha) clears conventional significance (t > 2) in 2 of 5 reruns, with a
+third close behind — see "Run-to-run noise" below for how much this specific count has moved
+across repeated reruns of this notebook. Two checks on why it works (both diagnostics below use
+one representative run, since they're about specific months/predictions rather than a
 distribution):
 
 - **Hit rate on the four worst diagnosed losses**: Feb 2000 SMB, Dec 2008 HML, Apr 2009 MOM, and
   May 2021 HML were all correctly abstained — 4 for 4.
 - **Mostly independent of MC Dropout**: of all factor-months the scanner sits out (431, 22.5% of
-  the sample), roughly a third were also flagged uncertain by MC Dropout (36.2% in this run) —
+  the sample), roughly a third were also flagged uncertain by MC Dropout (30.2% in this run) —
   it's catching a different kind of risk, not relabeling the same months.
 
 That independence has a clear cause. A diagnostic on the MC-Dropout-flagged factor-months where
 the baseline strategy went on to lose money (a long call that didn't pay off, since baseline only
 ever invests when its predicted probability exceeds 50%) found they were **high-conviction calls,
-not weak ones** — mean conviction (probability) 0.68 across 169 qualifying months, more
-high-conviction (>0.70, n=67) than low-conviction (0.50–0.58, n=27). MC Dropout's 50 stochastic
+not weak ones** — mean conviction (probability) 0.69 across 147 qualifying months, more
+high-conviction (>0.70, n=63) than low-conviction (0.50–0.58, n=27). MC Dropout's 50 stochastic
 sub-networks all learn the same about-to-break pattern together, so the model's self-assessed
 uncertainty doesn't flag a genuine regime break in advance — a known failure mode, not a bug here.
 That result also killed a plausible follow-up (conviction-gated abstention: only sit out when both
@@ -77,12 +77,12 @@ i.e., whether MC Dropout catches anything extra on the months the scanner doesn'
 
 | Subset | MC-Dropout-flagged acc | MC-Dropout-unflagged acc | Gap | SE of gap |
 |---|---|---|---|---|
-| Scanner keeps (n=1484) | 53.4% (n=320) | 53.6% (n=1164) | −0.2pp | 3.2pp |
-| Scanner abstains (n=431) | 50.0% (n=156) | 52.4% (n=275) | −2.4pp | 5.0pp |
+| Scanner keeps (n=1484) | 53.0% (n=279) | 54.0% (n=1205) | −1.0pp | 3.3pp |
+| Scanner abstains (n=431) | 52.3% (n=130) | 54.2% (n=301) | −1.9pp | 5.2pp |
 
 Both gaps are negative — MC-Dropout-flagged months are not even directionally more accurate than
 unflagged ones within either subset, let alone by a margin that clears their own standard errors
-(3.2pp and 5.0pp). MC Dropout's flag adds nothing on top of the scanner in this run, so a layered
+(3.3pp and 5.2pp). MC Dropout's flag adds nothing on top of the scanner in this run, so a layered
 strategy wasn't built.
 
 **Caveats**: the scanner's flag itself is fully deterministic (computed from realized returns,
@@ -105,7 +105,7 @@ Mean out-of-sample classification accuracy (paper Table 1) and multi-factor timi
 | RF | 56.3% | 55.6% | 0.84 | 0.66 |
 | XGBoost (≈ GBT) | 54.6% | 54.8% | 0.79 | 0.61 |
 | **MT** | **54.3%** | 55.4% | **0.67** | 0.69 |
-| MC-Dropout MT | 53.1% | — | 0.60 | — |
+| MC-Dropout MT | 53.8% | — | 0.58 | — |
 
 MT landing under the paper's fully-tuned, 10-seed-ensembled numbers is expected given the
 single-seed/no-grid-search simplification noted below, not a bug — architecture, walk-forward
