@@ -93,14 +93,14 @@ except where flagged.
 | Hard-sharing layers | 4 × 32 units | 4 × 32 units | ✅ |
 | Factor-specific layers | 2 × 8 units per factor | 2 × 8 units per factor | ✅ |
 | Output activation | Sigmoid, one head per factor | Sigmoid, one head per factor | ✅ |
-| L1 penalty | Grid {0.005, 0.007, 0.01, 0.02} | Fixed **0.01** | ⚠️ in grid, not searched |
-| Learning rate | Grid {0.005, 0.001} | Fixed **0.001** | ⚠️ in grid, not searched |
+| L1 penalty | Grid {0.005, 0.007, 0.01, 0.02} | Fixed **0.01** | in grid, not searched |
+| Learning rate | Grid {0.005, 0.001} | Fixed **0.001** | in grid, not searched |
 | Batch size | 4 | 4 | ✅ |
 | Max epochs | 200 | 200 | ✅ |
 | Early-stopping patience | 20 | 20 | ✅ |
 | Optimizer | Adam, default params | Adam, default params | ✅ |
-| Seed ensemble | 10 seeds, averaged | **1 seed** | ❌ deviation |
-| Normalization | Not specified | BatchNorm after each shared dense layer | ⚠️ implementation choice |
+| Seed ensemble | 10 seeds, averaged | **1 seed** | deviation |
+| Normalization | Not specified | BatchNorm after each shared dense layer | implementation choice |
 | **Total MT fits** | 32 folds × 8 grid points × 10 seeds = **2,560** | 32 folds × 1 × 1 = **32** | **80× fewer** |
 
 ### MC-Dropout MT (extension — no paper counterpart)
@@ -121,16 +121,16 @@ relative to plain MT is **not** a clean dropout-vs-batch-norm comparison.
 
 | Model | Paper grid (Table IA1) | This repo | Match? |
 |---|---|---|---|
-| **RF** — trees | {50, 100, 200, 500, 1000} | Fixed **500** | ⚠️ in grid |
-| **RF** — max depth | {1, 3, 5} | Fixed **5** | ⚠️ in grid |
+| **RF** — trees | {50, 100, 200, 500, 1000} | Fixed **500** | in grid |
+| **RF** — max depth | {1, 3, 5} | Fixed **5** | in grid |
 | **RF** — features/split | √p | √p | ✅ |
-| **GBT / XGBoost** — learning rate | {0.001, 0.01, 0.1} | Fixed **0.1** | ⚠️ in grid |
-| **GBT / XGBoost** — trees | {50, 100, 200} | Fixed **200** | ⚠️ in grid |
-| **GBT / XGBoost** — subsample | {0.25, 0.5, 1} | Fixed **0.5** | ⚠️ in grid |
-| **GBT / XGBoost** — depth | 1–2 | Fixed **2** | ⚠️ in grid |
-| **GBT / XGBoost** — implementation | Paper's own GBT | `xgboost.XGBClassifier` | ⚠️ substitute |
+| **GBT / XGBoost** — learning rate | {0.001, 0.01, 0.1} | Fixed **0.1** | in grid |
+| **GBT / XGBoost** — trees | {50, 100, 200} | Fixed **200** | in grid |
+| **GBT / XGBoost** — subsample | {0.25, 0.5, 1} | Fixed **0.5** | in grid |
+| **GBT / XGBoost** — depth | 1–2 | Fixed **2** | in grid |
+| **GBT / XGBoost** — implementation | Paper's own GBT | `xgboost.XGBClassifier` | substitute |
 | **LR** | No grid searched | Unregularized, `max_iter=5000` | ✅ neither tuned |
-| **EN, SVM, NN, LSTM, DMT, DMTc** | Grid-searched | Not implemented | ❌ out of scope |
+| **EN, SVM, NN, LSTM, DMT, DMTc** | Grid-searched | Not implemented | out of scope |
 
 ### Known deviations beyond hyperparameters
 
